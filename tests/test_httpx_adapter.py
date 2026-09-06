@@ -2,6 +2,7 @@ import asyncio
 
 import httpx
 
+from wyndpy.core.results import ErrorType, RetrievalError
 from wyndpy.fetch.httpx_adapter import HttpxFetcher
 
 
@@ -47,5 +48,16 @@ def test_injected_client_is_not_owned_or_closed():
         assert injected.is_closed is False
 
         await injected.aclose()
+
+    asyncio.run(run())
+
+
+def test_empty_allowlist_rejects_public_https():
+    async def run():
+        fetcher = HttpxFetcher()
+        result = await fetcher.fetch("https://example.com")
+        assert isinstance(result, RetrievalError)
+        assert result.error_type == ErrorType.FORBIDDEN_URL
+        await fetcher.close()
 
     asyncio.run(run())

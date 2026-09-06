@@ -34,9 +34,14 @@ def _is_private_host(host: str) -> bool:
 
 
 class HttpxFetcher:
-    """FetcherProtocol implementation backed by httpx."""
+    """FetcherProtocol implementation backed by httpx.
+
+    An empty ``allowlist_domains`` is fail-closed: every URL is rejected.
+    Pass an explicit list, or let ``build_router()`` copy ``trust.allow``.
+    """
 
     name = "httpx"
+    implemented = True
 
     def __init__(
         self,
@@ -86,7 +91,9 @@ class HttpxFetcher:
             return False
         if not parsed.hostname or _is_private_host(parsed.hostname):
             return False
-        if self.allowlist_domains and not any(
+        if not self.allowlist_domains:
+            return False
+        if not any(
             parsed.hostname == d or parsed.hostname.endswith(f".{d}")
             for d in self.allowlist_domains
         ):

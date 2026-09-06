@@ -1,20 +1,19 @@
 schema_version: 1
 
+# Working consumer policy: httpx only. Do not list firecrawl / exa /
+# llamaparse here — those adapters are stubs (NotImplementedError) and
+# build_router() refuses them unless allow_stubs=True.
 roles:
-  fetch: [httpx, firecrawl]
-  search: [exa]
-  parse: [llamaparse]
+  fetch: [httpx]
+  # search: [exa]          # stub — leave out until the Exa adapter is wired
+  # parse: [llamaparse]    # stub — leave out until LlamaParse is wired
 
 search:
   candidate_count: 10
 
-escalation_rules:
-  - trigger: empty_shell
-    from: httpx
-    to: firecrawl
-  - trigger: content_type=pdf
-    from: httpx
-    to: llamaparse
+# Escalation to stub adapters is omitted. Add rules only after those
+# adapters are implemented (or pass allow_stubs=True in tests).
+escalation_rules: []
 
 discovery:
   new_items: every_cycle

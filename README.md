@@ -5,12 +5,14 @@ source (or a partially known one), Wyndpy finds it, fetches it, and parses
 it into clean structured content — using swappable adapters behind three
 roles (`Fetcher`, `Searcher`, `Parser`), never hardcoded tool names.
 
-See `wyndpy_design_spec.md` (or your copy of it) for the full design
-rationale.
+See [`docs/wyndpy_design_spec.md`](docs/wyndpy_design_spec.md) for the
+full design rationale.
 
 ## Status
 
-Fully implemented and tested against the design spec:
+Core router, policy loader, factory, and the httpx fetcher are implemented
+and tested. Paid extras and several spec §9 items are still stubs — see
+**Known limitations**. What works:
 
 - Core abstractions (`ResolvableItem`, `RetrievalResult`/`RetrievalError`/`Candidate`)
 - **`Router`** implementing both tracks end to end:
@@ -31,14 +33,11 @@ Fully implemented and tested against the design spec:
     opt-in for pipelines that want full automation.
   - Legacy/standalone mode (no `escalation_rules` passed) still works for
     adapters used directly with no policy file
-- **`wyndpy.factory.build_router(policy, credentials)`** and
-  **`wyndpy.factory.build_scheduler(policy)`** — the pieces that actually
-  wire a `Policy` into running objects: instantiates adapters via entry
-  points, builds the trust strategy and registry backend, passes
-  `escalation_rules` through, and returns a `CronScheduler`/`EventScheduler`
-  per `scheduling_backend`. Verified against a real live fetch
-  (`github.com`) end to end: policy.yaml -> factory -> router -> httpx ->
-  hashed, resolved item. 12 dedicated tests in `tests/test_factory.py`.
+- **`wyndpy.factory.build_router(policy, credentials, *, registry=, trust=)`**
+  and **`build_scheduler(policy)`** — wire a `Policy` into running objects.
+  A consuming project injects its own `RegistryProtocol` / `TrustStrategy`
+  (or prebuilt adapter lists) instead of the memory registry. Stub extras
+  are refused unless `allow_stubs=True`.
 - Working default adapter: `HttpxFetcher` (SSRF guards, timeouts,
   empty-shell detection, SHA-256 hashing, raw-bytes passthrough for PDFs)
 - Adapter *stubs* (correct shape, `NotImplementedError` on the actual API
@@ -55,16 +54,17 @@ Fully implemented and tested against the design spec:
 - **`llm_eval` pytest marker** + `--run-llm-eval` flag: quality-drift evals
   are collected but skipped by default, matching the FabricIQ pattern this
   library originated from (`tests/eval/`)
-- 27 passing tests covering every path above (`tests/test_router_smoke.py`,
+- Tests covering the paths above (`tests/test_router_smoke.py`,
   `tests/test_router_gaps_closed.py`, `tests/test_factory.py`,
   `tests/test_httpx_adapter.py`)
 
 ## Known limitations (honest, not silently missing)
 
+- **Not published to an index yet** — depend via path or git SHA. Set
+  `[project.urls]` Homepage / Repository when the repo is hosted.
 - **Firecrawl / Exa / LlamaParse have no real API calls wired in** — they're
-  structurally correct stubs (`NotImplementedError`) so the router logic
-  around them is fully tested, but nothing will actually call these APIs
-  until you fill them in.
+  structurally correct stubs (`implemented = False`). `build_router()`
+  refuses them unless `allow_stubs=True`. Extra groups install SDKs only.
 - **Postgres registry is a stub** — bring your own DB access layer.
 - **Cost-cap / rate-limit *enforcement*** — config fields exist and are
   parsed, but the router doesn't yet throttle or reject calls based on
@@ -101,11 +101,41 @@ Fully implemented and tested against the design spec:
 
 ## Install
 
-```bash
-pip install -e .                              # core only (httpx fetch works out of the box)
-pip install -e ".[firecrawl,exa,llamaparse]"  # add adapters as needed
-pip install -e ".[dev]"                       # pytest + pytest-asyncio
+Wyndpy is not on PyPI. The supported consumer path is a **private GitHub
+repo + pinned tag** (SHA is fine in CI). GitHub has no Python package
+registry; `pip` / uv clone the tag and install from source.
+
+**From another project** (e.g. FabricIQ `backend/pyproject.toml`):
+
+```toml
+dependencies = [
+    "wyndpy @ git+https://github.com/OWNER/wyndpy.git@v0.1.1",
+]
 ```
+
+Private repo: the machine needs a GitHub token or SSH key that can read
+`OWNER/wyndpy`. In CI, `pip install` uses `GITHUB_TOKEN` (or
+`git+ssh://git@github.com/OWNER/wyndpy.git@v0.1.1`).
+
+**Local sibling only** (this machine, before the repo is hosted):
+
+```toml
+dependencies = [
+    "wyndpy @ file:../../wyndpy",
+]
+```
+
+**In this checkout:**
+
+```bash
+pip install -e .          # core only — httpx fetch works
+pip install -e ".[dev]"   # pytest, ruff, mypy, build
+```
+
+`[firecrawl]`, `[exa]`, `[llamaparse]`, `[postgres]`, and `[mcp]` install
+vendor SDKs only. The matching adapters are **stubs** (`implemented =
+False`). `build_router()` refuses them unless you pass `allow_stubs=True`.
+Do not add those extras until the adapters call the APIs.
 
 ## Quick start — direct call, no policy file
 
@@ -127,28 +157,22 @@ asyncio.run(main())
 import asyncio
 from wyndpy import load_policy, build_router, ResolvableItem
 
-# examples/policy.example.yaml lists firecrawl/exa/llamaparse in `roles` —
-# those need credentials (see note below) or build_router() raises a
-# PolicyError naming exactly which adapter is missing them. A policy with
-# only `roles: {fetch: [httpx]}` needs no credentials at all.
+# examples/policy.example.yaml is httpx-only. trust.allow is copied onto
+# HttpxFetcher unless you pass credentials["httpx"]["allowlist_domains"].
+# An empty allowlist is refused (fail closed).
 policy = load_policy("examples/policy.example.yaml")
-router = build_router(policy, credentials={
-    "httpx": {"allowlist_domains": ["your-vendor.com"]},
-    "firecrawl": {"api_key": "..."},
-    "exa": {"api_key": "..."},
-    "llamaparse": {"api_key": "..."},
-})
+router = build_router(policy)  # or inject registry= / trust= from your app
 
 item = ResolvableItem(id="sku-1", query_hint="...", current_sources=["https://your-vendor.com/spec"])
 result = asyncio.run(router.resolve_known_source(item))
 ```
 
-> **Every adapter listed in `policy.roles` gets constructed immediately**
-> by `build_router()`, so it needs its credentials up front even if you
-> never end up calling it (e.g. `firecrawl` only fires on an httpx
-> empty-shell). Leave an adapter out of `roles` entirely if you don't have
-> credentials for it yet — `build_router()` will tell you exactly which
-> adapter and role are missing if you forget one.
+> **Every adapter listed in `policy.roles` is constructed immediately.**
+> Leave stubs (`firecrawl`, `exa`, `llamaparse`) out of `roles`. If you
+> list one, `build_router()` raises `PolicyError` unless
+> `allow_stubs=True`. Inject your store with `registry=` and a custom
+> trust strategy with `trust=` — do not use the Postgres stub in
+> production.
 
 Everything is still importable from its actual submodule too
 (`wyndpy.core.router.Router`, `wyndpy.fetch.httpx_adapter.HttpxFetcher`,
@@ -164,10 +188,10 @@ from wyndpy.core.item import ResolvableItem
 import asyncio
 
 policy = load_policy("examples/policy.example.yaml")
-router = build_router(policy, credentials={
-    "httpx": {"allowlist_domains": ["your-vendor.com"]},
-    # "firecrawl": {"api_key": "..."},  # once wired up
-})
+router = build_router(
+    policy,
+    credentials={"httpx": {"allowlist_domains": ["your-vendor.com"]}},
+)
 
 item = ResolvableItem(id="sku-1", query_hint="...", current_sources=["https://your-vendor.com/spec"])
 result = asyncio.run(router.resolve_known_source(item))
@@ -208,10 +232,9 @@ Best-practices additions beyond the core logic:
   for `ItemStatus`/`ErrorType` since `requires-python >= 3.11` already
   supports it)
 - **Top-level import ergonomics**: `from wyndpy import Router, load_policy,
-  build_router, ResolvableItem, ...` instead of forcing every caller to
-  know internal module paths. `wyndpy.__version__` reads from installed
-  package metadata (no hardcoded version to drift out of sync with
-  `pyproject.toml`).
+  build_router, FetcherProtocol, RegistryProtocol, ...` and
+  `from wyndpy.testing import FakeFetcher`. `wyndpy.__version__` reads
+  from installed package metadata.
 - **Consistent, catchable errors from the policy loader**: malformed YAML,
   a missing file, and an incomplete `escalation_rules` entry all raise a
   clear `PolicyError` with a specific message — not a raw `KeyError`,

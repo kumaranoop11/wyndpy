@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — shareable-package surface
+
+### Added
+- Consumer install recipe (path / git SHA) in the README
+- `build_router(..., registry=, trust=, fetchers=, searchers=, parsers=, allow_stubs=)`
+  so a consuming project can inject its own store and trust strategy
+- Public re-exports: protocols, `run_sync`, `wyndpy.testing` fakes
+- Stub marker (`implemented = False`) on Firecrawl / Exa / LlamaParse /
+  Postgres; `build_router()` refuses them unless `allow_stubs=True`
+- `HttpxFetcher` fail-closed on an empty allowlist; factory copies
+  `policy.trust.allow` onto httpx when credentials omit it
+- `.github/workflows/ci.yml` (lint, type-check, test, wheel smoke)
+
+### Changed
+- Example policy is httpx-only so a second project can load it without stubs
+- README points at `docs/wyndpy_design_spec.md` and no longer claims the
+  spec is fully implemented
+
 ## [0.1.0] — initial skeleton
 
 ### Added

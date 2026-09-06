@@ -12,6 +12,7 @@ class LlamaParseParser:
     """ParserProtocol implementation backed by the LlamaParse API."""
 
     name = "llamaparse"
+    implemented = False
 
     def __init__(self, api_key: str, timeout_s: float = 60.0) -> None:
         self.api_key = api_key

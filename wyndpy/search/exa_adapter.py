@@ -12,6 +12,7 @@ class ExaSearcher:
     """SearcherProtocol implementation backed by the Exa API."""
 
     name = "exa"
+    implemented = False
 
     def __init__(self, api_key: str, domain_allowlist: list[str] | None = None) -> None:
         self.api_key = api_key

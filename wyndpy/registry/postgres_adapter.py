@@ -9,6 +9,8 @@ from wyndpy.core.item import ResolvableItem
 
 
 class PostgresRegistry:
+    implemented = False
+
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
         # TODO: initialize connection pool

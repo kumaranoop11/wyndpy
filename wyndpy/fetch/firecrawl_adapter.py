@@ -14,6 +14,7 @@ class FirecrawlFetcher:
     """FetcherProtocol implementation backed by the Firecrawl API."""
 
     name = "firecrawl"
+    implemented = False
 
     def __init__(
         self,

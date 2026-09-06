@@ -6,6 +6,7 @@ from wyndpy.policy import Policy, PolicyError
 from wyndpy.registry.memory_adapter import MemoryRegistry
 from wyndpy.scheduling.cron_adapter import CronScheduler
 from wyndpy.scheduling.event_adapter import EventScheduler
+from wyndpy.testing import FakeFetcher
 from wyndpy.trust.allowlist import AllowlistTrust
 
 
@@ -48,6 +49,64 @@ def test_build_router_passes_credentials_to_adapter_constructor():
     assert router.fetchers[0].allowlist_domains == ["only-this.example.com"]
 
 
+def test_build_router_wires_trust_allow_into_httpx_when_credentials_omit_it():
+    router = build_router(_base_policy(trust_allow=["*.vendor.test"]))
+    assert router.fetchers[0].allowlist_domains == ["vendor.test"]
+
+
+def test_build_router_httpx_empty_allowlist_raises():
+    with pytest.raises(PolicyError, match="non-empty allowlist"):
+        build_router(_base_policy(trust_allow=[]))
+
+
+def test_build_router_accepts_injected_registry_and_trust():
+    class _Reg:
+        async def get(self, item_id: str):
+            return None
+
+        async def upsert(self, item) -> None:
+            return None
+
+        async def list_pending_discovery(self):
+            return []
+
+    class _Trust:
+        async def is_trusted(self, candidate) -> bool:
+            return True
+
+    registry = _Reg()
+    trust = _Trust()
+    router = build_router(
+        _base_policy(trust_strategy="reputation"),
+        registry=registry,
+        trust=trust,
+    )
+    assert router.registry is registry
+    assert router.trust is trust
+
+
+def test_build_router_accepts_prebuilt_fetchers():
+    fake = FakeFetcher(responses={})
+    router = build_router(_base_policy(trust_allow=[]), fetchers=[fake])
+    assert router.fetchers == [fake]
+
+
+def test_build_router_refuses_stub_adapters():
+    policy = _base_policy(roles={"fetch": ["httpx", "firecrawl"]})
+    with pytest.raises(PolicyError, match="stub"):
+        build_router(policy, credentials={"firecrawl": {"api_key": "k"}})
+
+
+def test_build_router_allow_stubs_constructs_firecrawl():
+    policy = _base_policy(roles={"fetch": ["httpx", "firecrawl"]})
+    router = build_router(
+        policy,
+        credentials={"firecrawl": {"api_key": "k"}},
+        allow_stubs=True,
+    )
+    assert [f.name for f in router.fetchers] == ["httpx", "firecrawl"]
+
+
 def test_build_router_uses_allowlist_trust_from_policy():
     router = build_router(_base_policy(trust_allow=["vendor.test"]))
     assert isinstance(router.trust, AllowlistTrust)
@@ -64,9 +123,14 @@ def test_build_router_unknown_trust_strategy_raises():
         build_router(_base_policy(trust_strategy="reputation"))
 
 
-def test_build_router_postgres_without_dsn_raises():
-    with pytest.raises(PolicyError):
+def test_build_router_postgres_is_refused_as_stub():
+    with pytest.raises(PolicyError, match="stub"):
         build_router(_base_policy(registry_backend="postgres"))
+
+
+def test_build_router_postgres_without_dsn_raises_when_stubs_allowed():
+    with pytest.raises(PolicyError, match="dsn"):
+        build_router(_base_policy(registry_backend="postgres"), allow_stubs=True)
 
 
 def test_build_router_config_carries_candidate_count_and_require_review():
@@ -81,7 +145,7 @@ def test_build_router_missing_adapter_credentials_raises_clear_policy_error():
     not a raw TypeError from the adapter's __init__."""
     policy = _base_policy(roles={"fetch": ["httpx", "firecrawl"]})
     with pytest.raises(PolicyError, match="firecrawl.*fetch"):
-        build_router(policy)  # no credentials for firecrawl's required api_key
+        build_router(policy, allow_stubs=True)
 
 
 def test_build_scheduler_cron():
@@ -95,3 +159,15 @@ def test_build_scheduler_event():
 def test_build_scheduler_unknown_backend_raises():
     with pytest.raises(PolicyError):
         build_scheduler(_base_policy(scheduling_backend="something_else"))
+
+
+def test_public_exports_include_protocols_and_fakes():
+    import wyndpy
+    from wyndpy.testing import FakeFetcher, FakeParser, FakeSearcher
+
+    assert wyndpy.FetcherProtocol is not None
+    assert wyndpy.RegistryProtocol is not None
+    assert wyndpy.TrustStrategy is not None
+    assert FakeFetcher is not None
+    assert FakeSearcher is not None
+    assert FakeParser is not None

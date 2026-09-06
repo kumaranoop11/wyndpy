@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package and dev tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Ruff
+        run: python -m ruff check wyndpy/ tests/
+      - name: Mypy
+        run: python -m mypy wyndpy/
+      - name: Pytest
+        run: python -m pytest tests/ -v
+
+  wheel-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+      - name: Install wheel into a fresh venv and smoke-test it
+        # cwd must not be the repo root: `python -c "import wyndpy"` puts
+        # cwd on sys.path before site-packages and would shadow-import
+        # the source tree instead of the installed wheel.
+        working-directory: /tmp
+        run: |
+          python -m venv /tmp/wyndpy-smoke
+          /tmp/wyndpy-smoke/bin/pip install --upgrade pip
+          /tmp/wyndpy-smoke/bin/pip install "${GITHUB_WORKSPACE}"/dist/wyndpy-*.whl
+          /tmp/wyndpy-smoke/bin/python -c "import wyndpy, pathlib; p = pathlib.Path(wyndpy.__file__).resolve(); assert 'site-packages' in str(p), p; print(wyndpy.__version__, p)"
