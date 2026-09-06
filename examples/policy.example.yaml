@@ -1,0 +1,42 @@
+schema_version: 1
+
+roles:
+  fetch: [httpx, firecrawl]
+  search: [exa]
+  parse: [llamaparse]
+
+search:
+  candidate_count: 10
+
+escalation_rules:
+  - trigger: empty_shell
+    from: httpx
+    to: firecrawl
+  - trigger: content_type=pdf
+    from: httpx
+    to: llamaparse
+
+discovery:
+  new_items: every_cycle
+  existing_items:
+    cadence: monthly
+    trigger_on: [fetch_failure, stale_after_days:90]
+
+trust:
+  strategy: allowlist
+  allow: ["*.example.com"]
+  require_review: true
+
+unresolved_handling: leave_unresolved
+
+registry_backend: memory
+scheduling_backend: cron
+
+cost_caps:
+  exa: 50/day
+  firecrawl: 200/day
+  llamaparse: 100/day
+
+rate_limits:
+  exa: 5/minute
+  firecrawl: 10/minute

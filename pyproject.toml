@@ -1,0 +1,58 @@
+[project]
+name = "wyndpy"
+version = "0.1.0"
+description = "Generic, pluggable content-retrieval library — role-based fetch/search/parse adapters, usable standalone, as tool-calls, or via MCP."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+firecrawl = ["firecrawl-py"]
+exa = ["exa-py"]
+llamaparse = ["llama-parse"]
+postgres = ["asyncpg"]
+mcp = ["mcp"]
+all = ["wyndpy[firecrawl,exa,llamaparse,postgres,mcp]"]
+dev = ["pytest", "pytest-asyncio", "pyflakes", "ruff", "mypy", "types-PyYAML"]
+
+[project.entry-points."wyndpy.fetch"]
+httpx = "wyndpy.fetch.httpx_adapter:HttpxFetcher"
+firecrawl = "wyndpy.fetch.firecrawl_adapter:FirecrawlFetcher"
+
+[project.entry-points."wyndpy.search"]
+exa = "wyndpy.search.exa_adapter:ExaSearcher"
+
+[project.entry-points."wyndpy.parse"]
+llamaparse = "wyndpy.parse.llamaparse_adapter:LlamaParseParser"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["wyndpy*"]
+
+[tool.setuptools.package-data]
+wyndpy = ["py.typed"]
+
+[tool.pytest.ini_options]
+markers = [
+    "llm_eval: adapter output-quality eval against recorded cassettes; not run in default `pytest` (see tests/eval/README.md)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # not yet strict — adapters/stubs still evolving
