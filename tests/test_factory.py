@@ -91,10 +91,11 @@ def test_build_router_accepts_prebuilt_fetchers():
     assert router.fetchers == [fake]
 
 
-def test_build_router_refuses_stub_adapters():
+def test_build_router_constructs_implemented_firecrawl():
     policy = _base_policy(roles={"fetch": ["httpx", "firecrawl"]})
-    with pytest.raises(PolicyError, match="stub"):
-        build_router(policy, credentials={"firecrawl": {"api_key": "k"}})
+    router = build_router(policy, credentials={"firecrawl": {"api_key": "k"}})
+    assert [f.name for f in router.fetchers] == ["httpx", "firecrawl"]
+    assert router.fetchers[1].allowlist_domains == ["example.com"]
 
 
 def test_build_router_allow_stubs_constructs_firecrawl():

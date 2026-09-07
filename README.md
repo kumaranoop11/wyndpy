@@ -40,9 +40,9 @@ and tested. Paid extras and several spec §9 items are still stubs — see
   are refused unless `allow_stubs=True`.
 - Working default adapter: `HttpxFetcher` (SSRF guards, timeouts,
   empty-shell detection, SHA-256 hashing, raw-bytes passthrough for PDFs)
-- Adapter *stubs* (correct shape, `NotImplementedError` on the actual API
-  call) for `FirecrawlFetcher`, `ExaSearcher`, `LlamaParseParser` — wire up
-  the real API calls before using these three live
+- Working paid adapters: `FirecrawlFetcher`, `ExaSearcher`,
+  `LlamaParseParser` (injectable callables for tests; live REST when a key
+  is set)
 - `AllowlistTrust`, `MemoryRegistry`, `PostgresRegistry` (stub),
   `CronScheduler`/`EventScheduler`
 - Policy loader + `schema_version` validation
@@ -62,9 +62,9 @@ and tested. Paid extras and several spec §9 items are still stubs — see
 
 - **Not published to an index yet** — depend via path or git SHA. Set
   `[project.urls]` Homepage / Repository when the repo is hosted.
-- **Firecrawl / Exa / LlamaParse have no real API calls wired in** — they're
-  structurally correct stubs (`implemented = False`). `build_router()`
-  refuses them unless `allow_stubs=True`. Extra groups install SDKs only.
+- **Firecrawl / Exa / LlamaParse are implemented** over their public REST
+  APIs. Default pytest injects fakes and never calls them. Extra groups
+  still install vendor SDKs for projects that want them.
 - **Postgres registry is a stub** — bring your own DB access layer.
 - **Cost-cap / rate-limit *enforcement*** — config fields exist and are
   parsed, but the router doesn't yet throttle or reject calls based on
@@ -101,23 +101,27 @@ and tested. Paid extras and several spec §9 items are still stubs — see
 
 ## Install
 
-Wyndpy is not on PyPI. The supported consumer path is a **private GitHub
-repo + pinned tag** (SHA is fine in CI). GitHub has no Python package
-registry; `pip` / uv clone the tag and install from source.
+Wyndpy is not on PyPI. Consume a **pinned GitHub tag**. GitHub has no
+Python package registry; `pip` / uv clone the tag and install from source.
+
+Release: https://github.com/kumaranoop11/wyndpy/releases/tag/v0.1.1
 
 **From another project** (e.g. FabricIQ `backend/pyproject.toml`):
 
 ```toml
 dependencies = [
-    "wyndpy @ git+https://github.com/OWNER/wyndpy.git@v0.1.1",
+    "wyndpy @ git+https://github.com/kumaranoop11/wyndpy.git@v0.1.1",
 ]
 ```
 
-Private repo: the machine needs a GitHub token or SSH key that can read
-`OWNER/wyndpy`. In CI, `pip install` uses `GITHUB_TOKEN` (or
-`git+ssh://git@github.com/OWNER/wyndpy.git@v0.1.1`).
+If the repo is private, the machine needs a GitHub token or SSH key.
+In CI use `GITHUB_TOKEN`, or:
 
-**Local sibling only** (this machine, before the repo is hosted):
+```toml
+"wyndpy @ git+ssh://git@github.com/kumaranoop11/wyndpy.git@v0.1.1"
+```
+
+**Local sibling only** (editable checkout on this machine):
 
 ```toml
 dependencies = [

@@ -1,9 +1,10 @@
 import asyncio
+import time
 
 import httpx
 
 from wyndpy.core.results import ErrorType, RetrievalError
-from wyndpy.fetch.httpx_adapter import HttpxFetcher
+from wyndpy.fetch.httpx_adapter import HttpxFetcher, _is_private_host
 
 
 def test_client_is_created_lazily_and_reused_across_calls():
@@ -61,3 +62,23 @@ def test_empty_allowlist_rejects_public_https():
         await fetcher.close()
 
     asyncio.run(run())
+
+
+def test_private_ip_literal_is_rejected():
+    assert _is_private_host("127.0.0.1") is True
+    assert _is_private_host("10.0.0.1") is True
+    assert _is_private_host("8.8.8.8") is False
+
+
+def test_private_host_dns_timeout_does_not_hang(monkeypatch):
+    def _slow(_host: str) -> str:
+        time.sleep(1)
+        return "8.8.8.8"
+
+    monkeypatch.setattr(
+        "wyndpy.fetch.httpx_adapter.socket.gethostbyname", _slow
+    )
+    monkeypatch.setattr("wyndpy.fetch.httpx_adapter._DNS_TIMEOUT_S", 0.1)
+    started = time.monotonic()
+    assert _is_private_host("example.com") is False
+    assert time.monotonic() - started < 0.8

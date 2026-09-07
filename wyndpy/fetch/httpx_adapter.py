@@ -8,6 +8,7 @@ fetch — close() it (or use as an async context manager) when done.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import ipaddress
 import logging
 import re
@@ -23,13 +24,33 @@ logger = logging.getLogger("wyndpy.fetch.httpx")
 DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 EMPTY_SHELL_TEXT_THRESHOLD = 200  # visible chars after stripping tags/scripts
+_DNS_TIMEOUT_S = 2.0
+
+
+def _resolve_host(host: str) -> str:
+    """Resolve with a hard timeout so a stuck DNS cannot pin the event loop."""
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(socket.gethostbyname, host).result(timeout=_DNS_TIMEOUT_S)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _is_private_host(host: str) -> bool:
     try:
-        ip = ipaddress.ip_address(socket.gethostbyname(host))
+        ip = ipaddress.ip_address(host)
         return ip.is_private or ip.is_loopback or ip.is_link_local
-    except (socket.gaierror, ValueError):
+    except ValueError:
+        pass
+    try:
+        ip = ipaddress.ip_address(_resolve_host(host))
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except (
+        socket.gaierror,
+        ValueError,
+        OSError,
+        concurrent.futures.TimeoutError,
+    ):
         return False
 
 

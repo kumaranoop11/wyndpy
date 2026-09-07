@@ -53,14 +53,17 @@ def _construct(
             f"allow_stubs=True to construct it for tests."
         )
     kwargs = dict(credentials.get(name, {}))
-    if role == "fetch" and name == "httpx" and "allowlist_domains" not in kwargs:
-        kwargs["allowlist_domains"] = _normalize_allow(list(trust_allow or []))
-    if role == "fetch" and name == "httpx" and not kwargs.get("allowlist_domains"):
-        raise PolicyError(
-            "httpx fetcher requires a non-empty allowlist. Set "
-            "trust.allow in the policy, or pass "
-            "credentials={'httpx': {'allowlist_domains': [...]}}."
-        )
+    if role == "fetch" and name in {"httpx", "firecrawl"}:
+        if "allowlist_domains" not in kwargs:
+            kwargs["allowlist_domains"] = _normalize_allow(list(trust_allow or []))
+        if name == "httpx" and not kwargs.get("allowlist_domains"):
+            raise PolicyError(
+                "httpx fetcher requires a non-empty allowlist. Set "
+                "trust.allow in the policy, or pass "
+                "credentials={'httpx': {'allowlist_domains': [...]}}."
+            )
+    if role == "search" and name == "exa" and "domain_allowlist" not in kwargs:
+        kwargs["domain_allowlist"] = _normalize_allow(list(trust_allow or []))
     try:
         return cls(**kwargs)
     except TypeError as exc:
@@ -92,11 +95,21 @@ def _instantiate_fetcher(
 
 
 def _instantiate_searcher(
-    name: str, credentials: dict, *, allow_stubs: bool
+    name: str,
+    credentials: dict,
+    *,
+    allow_stubs: bool,
+    trust_allow: list[str],
 ) -> SearcherProtocol:
     return cast(
         SearcherProtocol,
-        _construct("search", name, credentials, allow_stubs=allow_stubs),
+        _construct(
+            "search",
+            name,
+            credentials,
+            allow_stubs=allow_stubs,
+            trust_allow=trust_allow,
+        ),
     )
 
 
@@ -185,9 +198,8 @@ def build_router(
     `{"httpx": {"allowlist_domains": ["vendor.example"]}}`.
 
     A consuming project can inject its own `registry`, `trust`, or
-    prebuilt adapter lists instead of the built-in backends. Stub
-    adapters (Firecrawl, Exa, LlamaParse, Postgres) are refused unless
-    `allow_stubs=True`.
+    prebuilt adapter lists instead of the built-in backends. The
+    Postgres registry stub is refused unless `allow_stubs=True`.
     """
     credentials = dict(credentials or {})
 
@@ -208,7 +220,12 @@ def build_router(
         searchers
         if searchers is not None
         else [
-            _instantiate_searcher(name, credentials, allow_stubs=allow_stubs)
+            _instantiate_searcher(
+                name,
+                credentials,
+                allow_stubs=allow_stubs,
+                trust_allow=policy.trust_allow,
+            )
             for name in policy.roles.get("search", [])
         ]
     )

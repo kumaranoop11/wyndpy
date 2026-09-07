@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] — paid adapters wired
+
+### Added
+- Real `FirecrawlFetcher`, `ExaSearcher`, and `LlamaParseParser` API calls
+  (`implemented = True`). Tests inject scrape/search/parse functions so
+  default pytest never hits those APIs.
+- Factory copies `trust.allow` onto Firecrawl and Exa when credentials omit
+  the allowlist.
+
+### Changed
+- Missing Firecrawl key is `ErrorType.UNKNOWN`, not `EMPTY_SHELL`.
+- Firecrawl uses the same private-host SSRF guard as httpx.
+- Private-host DNS resolve has a 2s timeout so a stuck `gethostbyname`
+  cannot pin a fetch coroutine.
+- Exa drops hits whose host is not on `domain_allowlist` and raises
+  `SearchFailedError` on transport/API failure instead of returning `[]`.
+
 ## [0.1.1] — shareable-package surface
 
 ### Added
